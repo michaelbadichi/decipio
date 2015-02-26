@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html ng-app="decipioApp">
+
+<head>
+    <script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.2.15/angular.min.js"></script>
+</head>
+
+<body>
+    <div ng-controller="decipioController" ng-cloak ng-switch on="viewState">
+        <h1>decipio</h1>
+        <div ng-switch-when="process-select">
+            <h2>process select</h2>
+            <input type="checkbox" ng-model="config.showSystem" ng-change="toggledShowSystem()"></input>show system processes
+            <button ng-click="refreshProcesses()">refresh</button>
+            <table>
+                <tr ng-repeat="x in processes | orderBy:'name'" ng-click="selectProcess(x)">
+                    <td>{{ x.name }}</td>
+                    <td>{{ x.pid }}</td>
+                </tr>
+            </table>
+        </div>
+        <div ng-switch-when="first-search">
+            <h2>{{ selectedProcess.name + " (" + selectedProcess.pid + ")" }} first iteration - value search</h2>
+            <input type="number" required ng-model="searchValue"></input>
+            <button ng-click="searchExact(searchValue)">search</button>
+            <button ng-click="searchEqual()">any value</button>
+            <button ng-click="onShowPresets()">show presets</button>
+            <button ng-click="reselectProcess()">select new process</button>
+        </div>
+        <div ng-switch-when="not-found">
+            <h2>no matching locations found, lets start over...</h2>
+            <button ng-click="restartSearch()">search new value</button>
+            <button ng-click="onShowPresets()">show presets</button>
+            <button ng-click="reselectProcess()">select new process</button>
+        </div>
+        <div ng-switch-when="refine-search">
+            <h2>{{ selectedProcess.name + " (" + selectedProcess.pid + ")" }} refine search - {{ results.match }} matching</h2>
+            <input type="number" required ng-model="searchValue"></input>
+            <button ng-click="searchExact(searchValue)">search</button>
+            <button ng-click="searchGreater()">search greater</button>
+            <button ng-click="searchLower()">search lower</button>
+            <button ng-click="searchEqual()">search equal</button>
+            <table>
+                <tr ng-repeat="x in candidates" ng-click="selectAddress(x)">
+                    <td>{{ x.address }}</td>
+                    <td ng-style="{color: (x.type<0?'red':'blue')}">{{ x.value }}</td>
+                </tr>
+            </table>
+            <button ng-click="restartSearch()">search new value</button>
+            <button ng-click="onShowPresets()">show presets</button>
+            <button ng-click="reselectProcess()">select new process</button>
+        </div>
+        <div ng-switch-when="value-edit">
+            <h2>{{ selectedProcess.name + " (" + selectedProcess.pid + ")" }} value editor - {{ selectedAddress.address + " -> " + selectedAddress.value }}</h2>
+            <input type="number" required ng-model="newValue"></input>
+            <button ng-click="setValue(selectedAddress.address,newValue)">modify</button>
+            <button ng-click="onRefineSearch()">back</button>
+            <button ng-click="restartSearch()">search new value</button>
+            <button ng-click="onShowPresets()">show presets</button>
+            <button ng-click="addToPresets()">add to presets</button>
+            <button ng-click="reselectProcess()">select new process</button>
+        </div>
+        <div ng-switch-when="presets-view">
+            <h2>{{ selectedProcess.name }} presets</h2>
+            <table>
+                <tr>
+                    <td>entry description</td>
+                    <td>memory address</td>
+                    <td>value</td>
+                    <td>lock</td>
+                    <td>manage</td>
+                </tr>
+                <tr ng-repeat="x in config.presets[selectedProcess.filename] track by $index">
+                    <td ng-click="selectAddress(x)">{{ x.name }}</td>
+                    <td ng-click="selectAddress(x)">{{ x.address }}</td>
+                    <td ng-click="selectAddress(x)" ng-style="{color: (x.type<0?'red':'blue')}">{{ x.value }}</td>
+                    <td>
+                        <input type="checkbox" ng-model="x.lock" ng-change="toggledPresetLock(x)"></input>
+                    </td>
+                    <td>
+                        <button ng-click="removeFromPresets(x)">remove</button>
+                    </td>
+                </tr>
+            </table>
+            <button ng-click="onBackFromPresets()">back</button>
+            <button ng-click="restartSearch()">search new value</button>
+            <button ng-click="reselectProcess()">select new process</button>
+        </div>
+    </div>
+    <script>
+        var app = angular.module("decipioApp", []);
+
+        app.controller("decipioController", function ($scope, $http) {
+
+            //--------------------------------------------
+            console.log("on load");
+            $scope.config = {
+                showSystem: false,
+                presets: {}
+            };
+            $scope.results = { match: 0 };
+            
+            $scope.candidates = {};
+
+            $scope.toggledPresetLock = function (x) {
+                x.lockValue = x.value;
+                $scope.saveConfig();
+            };
+
+            $scope.onShowPresets = function () {
+                $scope.oldState = $scope.viewState;
+                $scope.viewState = "presets-view";
+            };
+
+            $scope.onBackFromPresets = function () {
+                $scope.viewState = $scope.oldState;
+            };
+
+            $scope.removeFromPresets = function (x) {
+                for (var i = 0; i < $scope.config.presets[$scope.selectedProcess.filename].length; i++) {
+                    if ($scope.config.presets[$scope.selectedProcess.filename][i].address == x.address) {
+                        $scope.config.presets[$scope.selectedProcess.filename].splice(i, 1);
+                        $scope.saveConfig();
+                        return;
+                    }
+                }
+            }
+
+            $scope.addToPresets = function () {
+                var p;
+                if ($scope.config.presets === undefined) $scope.config.presets = {};
+                if ($scope.selectedProcess.filename in $scope.config.presets) {
+                    p = angular.copy($scope.config.presets[$scope.selectedProcess.filename]);
+                } else {
+                    p = [];
+                }
+                $scope.selectedAddress.name = "";
+                $scope.selectedAddress.lock = false;
+                $scope.selectedAddress.lockValue = $scope.selectedAddress.value;
+                p.push($scope.selectedAddress);
+                $scope.config.presets[$scope.selectedProcess.filename] = p;
+                $scope.saveConfig();
+                $scope.onShowPresets();
+            };
+
+            $scope.toggledShowSystem = function () {
+                $scope.refreshProcesses();
+                $scope.saveConfig();
+            };
+
+            $scope.onRefineSearch = function () {
+                $scope.selectedAddress = null;
+                $scope.viewState = "refine-search";
+            };
+            
+            $scope.onSearchRefresh = function (res) {
+                $scope.results = res;
+                if (res.match) {
+                    //populate the candidates table 
+                    $http.get('/api/list')
+                        .success(function (data, status, headers, config) {
+                            $scope.candidates = data;
+                        })
+                        .error(function () {
+                        });
+                } else {
+                    //no results... we need to start over
+                }
+            };
+
+            $scope.onSearchResults = function (res) {
+                $scope.results = res;
+                if (res.match) {
+                    //populate the candidates table 
+                    $http.get('/api/list')
+                        .success(function (data, status, headers, config) {
+                            $scope.candidates = data;
+                            $scope.onRefineSearch();
+                        })
+                        .error(function () {
+                            alert("error getting candidates");
+                        });
+                } else {
+                    //no results... we need to start over
+                    $scope.viewState = "not-found";
+                }
+            };
+
+            $scope.restartSearch = function () {
+                $scope.selectProcess($scope.selectedProcess);
+            };
+
+            $scope.reselectProcess = function () {
+                $scope.refreshProcesses();
+                $scope.viewState = "process-select";
+            };
+
+            $scope.refreshProcesses = function () {
+                $http.get('/api/processes')
+                    .success(function (data, status, headers, config) {
+                        var proclist = [];
+                        console.log("showSystem = " + $scope.config.showSystem);
+                        if (!$scope.config.showSystem) {
+                            //filter all system processes
+                            //anything that starts with \Device\*\Windows\System32\
+                            for (var i = 0; i < data.length; i++) {
+                                var regex = /\\Device\\[^\\]*\\Windows\\System32\\.*/;
+                                if (!regex.test(data[i].filename)) {
+                                    proclist[proclist.length] = data[i];
+                                }
+                            }
+                        } else {
+                            proclist = data;
+                        }
+                        $scope.processes = proclist;
+                    })
+                    .error(function () {
+                        alert("error loading processes");
+                    });
+            };
+
+            $scope.selectProcess = function (p) {
+                $http.get('/api/select-process/' + p.pid)
+                    .success(function () {
+                        //hide this controller, and show firstSearchController
+                        $scope.selectedProcess = p;
+                        $scope.searchValue = 0;
+                        $scope.viewState = "first-search";
+                    })
+                    .error(function () {
+                        alert("error selecting process id" + p.pid);
+                    });
+            };
+
+            $scope.searchExact = function (val) {
+                $http.get('/api/search/exact/' + val)
+                    .success(function (data) {
+                        $scope.searchValue = val;
+                        $scope.onSearchResults(data);
+                    })
+                    .error(function () {
+                        alert("error performing exact scan");
+                    });
+            };
+
+            $scope.searchGreater = function () {
+                $http.get('/api/search/greater')
+                    .success(function (data) {
+                        $scope.onSearchResults(data);
+                    })
+                    .error(function () {
+                        alert("error performing greater scan");
+                    });
+            };
+
+            $scope.searchLower = function () {
+                $http.get('/api/search/lower')
+                    .success(function (data) {
+                        $scope.onSearchResults(data);
+                    })
+                    .error(function () {
+                        alert("error performing lower scan");
+                    });
+            };
+
+            $scope.searchEqual = function () {
+                $http.get('/api/search/equal')
+                    .success(function (data) {
+                        $scope.onSearchResults(data);
+                    })
+                    .error(function () {
+                        alert("error performing equal scan");
+                    });
+            };
+
+            $scope.selectAddress = function (x) {
+                $scope.selectedAddress = x;
+                console.log("setting newValue to " + x.value);
+                $scope.newValue = x.value;
+                $scope.viewState = "value-edit";
+            };
+
+            $scope.setValue = function (addr, val) {
+                $http.get('/api/set/' + addr + '/' + val)
+                    .success(function (data) {})
+                    .error(function () {
+                        //alert("error setting value data at " + addr);
+                    });
+            };
+
+            $scope.saveConfig = function () {
+                $http({
+                    method: 'POST',
+                    url: '/api/config',
+                    data: angular.toJson($scope.config)
+                })
+                    .success(function () {
+                        console.log("config saved");
+                    });
+            };
+
+            //----------------------------------
+
+            //load initial data
+            $http.get('/api/config')
+                .success(function (data, status, headers, config) {
+                    var cfgLoaded = false;
+                    //console.log("config ("+typeof data+") returned: " + JSON.stringify(data));
+                    if (typeof data == "object") {
+                        $scope.config = data;
+                        cfgLoaded = true;
+                    }
+                    if (!cfgLoaded) {
+                        console.log("no prior configuration");
+                    }
+                    $scope.reselectProcess();
+                });
+
+
+            //create a periodic value updater
+            setInterval(function () {
+                if ($scope.viewState == "value-edit" && $scope.selectedAddress) {
+                    $http.get('/api/get/' + $scope.selectedAddress.address)
+                        .success(function (data) {
+                            $scope.selectedAddress.value = data;
+                        })
+                        .error(function () {
+                            $scope.reselectProcess();
+                        });
+                }
+                if ($scope.viewState == "presets-view") {
+                    //update the values, todo: cosider not updating locked addresses
+                    for (var i = 0; i < $scope.config.presets[$scope.selectedProcess.filename].length; i++) {
+                        $http.get('/api/get/' + $scope.config.presets[$scope.selectedProcess.filename][i].address)
+                            .success((function (i) {
+                                return function (data) {
+                                    if (data !== undefined) {
+                                        $scope.config.presets[$scope.selectedProcess.filename][i].value = data;
+                                    }
+                                }
+                            })(i))
+                            .error(function () {
+                                //todo: 
+                                //maybe just remove the entry...
+                                //the memory is not accesible anymore?
+                                //reselecting process might lead to not being able to work with the app at all
+                            });
+                    }
+                }
+                if ($scope.viewState == "refine-search") {
+                    //if we have candidates, refresh the view
+                    if ($scope.results.match > 0 && $scope.results.match < 100) {
+                        $http.get('/api/search/refresh')
+                            .success(function (data) {
+                                $scope.onSearchRefresh(data);
+                            })
+                            .error(function () {
+                                alert("error performing refresh scan");
+                            });
+                    }
+                }
+                //as long as the process is running, set locked values
+                if ($scope.viewState != "process-select") {
+                    var p = $scope.config.presets[$scope.selectedProcess.filename];
+                    for (var i = 0; i < p.length; i++) {
+                        if (p[i].lock) {
+                            $scope.setValue(p[i].address, p[i].lockValue);
+                        }
+                    }
+                }
+            }, 1000);
+
+            //------------------------------------------			    
+
+        });
+    </script>
+</body>
+
+</html>

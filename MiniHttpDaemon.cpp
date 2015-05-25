@@ -933,7 +933,7 @@ static void* accept_request(void* userData)
         sprintf(tmppath, "%s%s", ar->serverinfo->root_folder.c_str(),ar->url.c_str());
         //convert the path to canonical path
 #ifdef _WINDOWS
-        GetFullPathName( tmppath, sizeof(path), path, NULL );
+        GetFullPathNameA( tmppath, sizeof(path), path, NULL );
 #else
         if( realpath( tmppath, path ) == NULL ) strcpy( path, tmppath );
 #endif
@@ -1519,7 +1519,7 @@ void MiniHttpDaemon::RegisterIncompleteFile( const char * _filename, int complet
 {
     char filename[512];
 #ifdef _WINDOWS
-    GetFullPathName( _filename, sizeof(filename), filename, NULL );
+    GetFullPathNameA( _filename, sizeof(filename), filename, NULL );
 #else
     if( realpath( _filename, filename ) == NULL ) strcpy( filename, _filename );
 #endif
@@ -1659,7 +1659,7 @@ bool MiniHttpDaemon::Start( const char * _rootFolder, int use_port, bool local_o
 {
     char rootFolder[512];
 #ifdef _WINDOWS
-    GetFullPathName( _rootFolder, sizeof(rootFolder), rootFolder, NULL );
+    GetFullPathNameA( _rootFolder, sizeof(rootFolder), rootFolder, NULL );
 #else
     if( realpath(_rootFolder, rootFolder) == NULL ) strcpy( rootFolder, _rootFolder );
 #endif

@@ -76,7 +76,7 @@ private:
 	void * m_AddResultsUserData;
 	unsigned int m_CurrentMatchCount;
 
-    template <class Type_V> int MemoryExactSearch( void * mem, SIZE_T size, Type_V value, CFile & f, Address_t & address, bool isAligned );
-    template <class Type_V> int MemoryConditionalSearch( PVOID rgnbase, SIZE_T rgnsize, char * oldp, char * curp, CFile & f, SearchMode_t mode, int type, Type_V value, SearchSize_t size, bool isAligned );
+    template <class Type_V> int MemoryExactSearch( void * mem, SIZE_T size, Type_V value, FILE * f, Address_t & address, bool isAligned );
+    template <class Type_V> int MemoryConditionalSearch( PVOID rgnbase, SIZE_T rgnsize, char * oldp, char * curp, FILE * f, SearchMode_t mode, int type, Type_V value, SearchSize_t size, bool isAligned );
 
 };

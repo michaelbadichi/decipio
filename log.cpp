@@ -19,7 +19,7 @@ extern "C" void DoLog( const char * fmt, ... )
     vsprintf_s(buf, sizeof(buf), fmt, args);
 #if defined(_WIN32) || defined(_WIN64) || defined(WIN32) || defined(WIN64)
     //WINDOWS
-    OutputDebugString( buf );
+    OutputDebugStringA( buf );
 #else
     //NOT WINDOWS
     printf("%s",buf);

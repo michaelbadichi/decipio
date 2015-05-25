@@ -8,7 +8,7 @@
 DecipioWebInterface::DecipioWebInterface( int listeningPort )
     :m_IsRunning( false )
     ,m_ListeningPort( listeningPort )
-{
+{ 
 }
 
 DecipioWebInterface::~DecipioWebInterface()
@@ -75,15 +75,15 @@ static bool MyFileHandler( void * userData, bool isPost, std::string & postData,
                 {
                     HKEY hKey;
                     const char * REG_KEY_BASE  = "SOFTWARE\\AlienAssembly\\decipio\\";
-                    LSTATUS rc = RegOpenKeyEx( HKEY_CURRENT_USER, REG_KEY_BASE, 0, KEY_ALL_ACCESS, &hKey );
+                    LSTATUS rc = RegOpenKeyExA( HKEY_CURRENT_USER, REG_KEY_BASE, 0, KEY_ALL_ACCESS, &hKey );
                     //if this is a post request - update configuration, else fetch it
                     if( isPost ) {
                         //set config
  	                    if( rc != ERROR_SUCCESS ) {
-		                    rc = RegCreateKeyEx( HKEY_CURRENT_USER, REG_KEY_BASE, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL );
+		                    rc = RegCreateKeyExA( HKEY_CURRENT_USER, REG_KEY_BASE, 0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, NULL, &hKey, NULL );
 	                    }
 	                    if( rc == ERROR_SUCCESS ) {
-                            RegSetValueEx( hKey, "Config", 0, REG_BINARY, (BYTE*)postData.c_str(), (DWORD)postData.length() );
+                            RegSetValueExA( hKey, "Config", 0, REG_BINARY, (BYTE*)postData.c_str(), (DWORD)postData.length() );
                         }                    
                     } 
                     else 
@@ -91,10 +91,10 @@ static bool MyFileHandler( void * userData, bool isPost, std::string & postData,
                         //get config
                         if( rc == ERROR_SUCCESS )  {
                             DWORD dataSize = 0;
-			                RegQueryValueEx( hKey, "Config", NULL, NULL, NULL, &dataSize );
+			                RegQueryValueExA( hKey, "Config", NULL, NULL, NULL, &dataSize );
 			                if( dataSize ) {
 				                std::vector<char> buf( dataSize );
-				                if( RegQueryValueEx( hKey, "Config", NULL, NULL, (LPBYTE)&buf[0], &dataSize ) == ERROR_SUCCESS ) {
+				                if( RegQueryValueExA( hKey, "Config", NULL, NULL, (LPBYTE)&buf[0], &dataSize ) == ERROR_SUCCESS ) {
                                     reply.Set( &buf[0], dataSize );
                                 }
                             }

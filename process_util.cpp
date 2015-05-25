@@ -1,4 +1,4 @@
-#include "Afx.h"
+#include <Windows.h>
 #include <Psapi.h>
 #include <TlHelp32.h>
 #include "process_util.h"
@@ -29,8 +29,8 @@ void GetAvailableProcesses(ProcessList_t & dest)
 			if ( EnumProcessModules( hProcess, &hMod, sizeof(hMod), &cbNeeded) ) {
 				char szProcessName[MAX_PATH]="unknown";
                 char szImageName[MAX_PATH]="unknown";
-				GetModuleBaseName( hProcess, hMod, szProcessName, sizeof(szProcessName) );
-                GetProcessImageFileName( hProcess, szImageName, sizeof(szImageName) );
+				GetModuleBaseNameA( hProcess, hMod, szProcessName, sizeof(szProcessName) );
+                GetProcessImageFileNameA( hProcess, szImageName, sizeof(szImageName) );
 				ProcessInfo_t pi;
 				pi.name = szProcessName;
                 pi.filename = szImageName;
@@ -183,11 +183,11 @@ bool CProcess::RescanRegions( void )
     if( m_IsOpened ) {
 		static PVOID kernelBase=0;
 		if(!kernelBase) {
-            HMODULE kernMod = GetModuleHandle( "KERNEL32.DLL" );
+            HMODULE kernMod = GetModuleHandleA( "KERNEL32.DLL" );
             VirtualQuery( kernMod, &mbi, sizeof( mbi ) );
             kernelBase = mbi.AllocationBase;
             sprintf_s(log, sizeof(log), "Kernel base address is: %p\n", kernelBase);
-		    OutputDebugString(log);   
+		    OutputDebugStringA(log);   
 		}
 		m_Regions.clear();
 		int i = 0;	
@@ -222,7 +222,7 @@ bool CProcess::RescanRegions( void )
 								    //add this region to the list
 								    if( mbi.BaseAddress < kernelBase ) {
                                         sprintf_s(log, sizeof(log), "Found rw data region: ALLOC_BASE: %p / BASE: %p (%d bytes)\n", mbi.AllocationBase, mbi.BaseAddress, mbi.RegionSize);
-				                        OutputDebugString(log);
+				                        OutputDebugStringA(log);
 									    RegionInfo_t t;
 									    t.base_address = mbi.BaseAddress;
 									    t.size = mbi.RegionSize;
@@ -324,7 +324,7 @@ bool CProcess::SetValue( PVOID base, unsigned int offset, SearchSize_t size, uns
 
 //////////////////////////////////////////////////////////////////////////
 
-template <class Type_V> int CProcess::MemoryExactSearch( void * mem, SIZE_T size, Type_V value, CFile & f, CProcess::Address_t & address, bool isAligned )
+template <class Type_V> int CProcess::MemoryExactSearch( void * mem, SIZE_T size, Type_V value, FILE * f, CProcess::Address_t & address, bool isAligned )
 {
     char * v = (char*)mem;
     int matchCount = 0;
@@ -332,7 +332,7 @@ template <class Type_V> int CProcess::MemoryExactSearch( void * mem, SIZE_T size
     for(unsigned int t=0; t<=size-sizeof(Type_V); t+=grow) {
 		if((*(Type_V*)v)==value) {
 			address.offset = t;
-			f.Write(&address,sizeof(address));
+			fwrite(&address,sizeof(address),1,f);
 			if(m_AddResultsCB) m_AddResultsCB( address.base, address.offset, address.value, address.type, m_AddResultsUserData );
 			matchCount++;
 		}
@@ -344,7 +344,7 @@ template <class Type_V> int CProcess::MemoryExactSearch( void * mem, SIZE_T size
 //////////////////////////////////////////////////////////////////////////
 
 template <class Type_V>
-int CProcess::MemoryConditionalSearch( PVOID rgnbase, SIZE_T rgnsize, char * oldp, char * curp, CFile & f, CProcess::SearchMode_t mode, int type, Type_V value, CProcess::SearchSize_t size, bool isAligned )
+int CProcess::MemoryConditionalSearch( PVOID rgnbase, SIZE_T rgnsize, char * oldp, char * curp, FILE * f, CProcess::SearchMode_t mode, int type, Type_V value, CProcess::SearchSize_t size, bool isAligned )
 {
     CProcess::Address_t address;
     address.type = type;
@@ -364,7 +364,7 @@ int CProcess::MemoryConditionalSearch( PVOID rgnbase, SIZE_T rgnsize, char * old
             address.base = rgnbase;
             address.offset = offset;
             address.value = d;
-            if( mode != CProcess::SM_REFRESH ) f.Write( &address, sizeof(address) );   //no need to write when we refresh
+            if( mode != CProcess::SM_REFRESH ) fwrite( &address, sizeof(address),1, f );   //no need to write when we refresh
             //but we report the new value
 		    if( m_AddResultsCB ) m_AddResultsCB( address.base, address.offset, address.value, address.type, m_AddResultsUserData );
 		    matchCount++;
@@ -384,19 +384,19 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
 	//create a temporary file to hold results
 	char tempPath[MAX_PATH];
 	char tempFilename[MAX_PATH];
-	GetTempPath( sizeof(tempPath), tempPath );
-	CString tempFilename2;
+	GetTempPathA( sizeof(tempPath), tempPath );
+	std::string tempFilename2;
 	tempFilename2 = tempPath;
 	tempFilename2 += "decipio.srch.old";
-	GetTempFileName( tempPath, "dcp", 0, tempFilename );
-	CFile f;
-	DeleteFile( tempFilename );
-	f.Open( tempFilename, CFile::modeCreate|CFile::modeWrite );
+	GetTempFileNameA( tempPath, "dcp", 0, tempFilename );
+	FILE * f;
+	DeleteFileA( tempFilename );
+	f = fopen(tempFilename, "wb");
 #if SUSPEND_WHILE_SEARCHING
-    OutputDebugString("Suspending process...\n");
+    OutputDebugStringA("Suspending process...\n");
 	Suspend();
 #endif //SUSPEND_WHILE_SEARCHING
-    OutputDebugString("Scanning regions...\n");
+    OutputDebugStringA("Scanning regions...\n");
 	RescanRegions();
 	Address_t address;
 	unsigned int searchsize = 4 >> size;
@@ -411,9 +411,9 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
                 //OutputDebugString("Dumping region...\n");
                 char *regionData = GetRegionMemory( *i );
                 if( regionData ) {
-                    f.Write( &(*i).base_address, sizeof(PVOID) );
-                    f.Write( &(*i).size, sizeof(SIZE_T) );
-                    f.Write( regionData, (UINT)(*i).size );
+					fwrite(&(*i).base_address, sizeof(PVOID), 1, f);
+					fwrite(&(*i).size, sizeof(SIZE_T), 1, f);
+					fwrite(regionData, (UINT)(*i).size, 1, f);
                     if(m_AddResultsCB) {
                         unsigned long offset = 0;
                         while(m_AddResultsCB && (offset+searchsize) <= (*i).size) {
@@ -456,7 +456,7 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
 								    while(t <(int)(buflen-3)) {
 									    int skip = t+1;
 									    address.offset = d+t;
-									    f.Write(&address,sizeof(address));
+										fwrite(&address, sizeof(address), 1, f);
 									    if(m_AddResultsCB) m_AddResultsCB( address.base, address.offset, address.value, address.type, m_AddResultsUserData );
 									    matchCount++;
 									    //found at d location
@@ -474,18 +474,17 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
         }
 	} else {
 		//This is not the first scan
-		CFile f2;
-		f2.Open( tempFilename2, CFile::modeRead );
+		FILE * f2 = fopen( tempFilename2.c_str(), "rb" );
         if( m_LastScanIsFullDump ) {
             //last scan was full dump
             PVOID rgnbase;
             SIZE_T rgnsize;
-            while( f2.Read( &rgnbase, sizeof(PVOID) ) == sizeof(PVOID) )
+            while(fread( &rgnbase, 1, sizeof(PVOID), f2) == sizeof(PVOID) )
             {
                 bool err = true;
-                if( f2.Read( &rgnsize, sizeof(SIZE_T) ) == sizeof(SIZE_T) ) {
+                if( fread( &rgnsize, 1,sizeof(SIZE_T), f2 ) == sizeof(SIZE_T) ) {
                     char * oldmem = new char[rgnsize];
-                    if( f2.Read( oldmem, (UINT)rgnsize ) == rgnsize ) {
+                    if( fread( oldmem, 1, (UINT)rgnsize, f2 ) == rgnsize ) {
                         char * curmem = new char[rgnsize];
                         SIZE_T readed;
                         bool doit = false;
@@ -517,7 +516,7 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
         else 
         {
             //last scan was not full dump
-		    while( f2.Read( &address, sizeof(address) ) == sizeof(address) ) 
+		    while( fread( &address, 1, sizeof(address), f2 ) == sizeof(address) ) 
 		    {
 			    DWORD d = address.value;
 			    SIZE_T readed;
@@ -544,7 +543,7 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
                         ( mode == SM_REFRESH ) )
                     {
                         address.value = d;  //keep the old value
-                        if( mode != SM_REFRESH ) f.Write( &address, sizeof(address) );
+                        if( mode != SM_REFRESH ) fwrite( &address, sizeof(address), 1, f );
                         //report the new value
 					    if( m_AddResultsCB ) m_AddResultsCB( address.base, address.offset, address.value, address.type, m_AddResultsUserData );
 					    matchCount++;
@@ -557,19 +556,19 @@ unsigned int CProcess::Search( SearchMode_t mode, unsigned int value, SearchSize
 		    }
             m_LastScanIsFullDump = false;
         }
-		f2.Close();      
+		fclose(f2);      
 	}
 #if SUSPEND_WHILE_SEARCHING
     OutputDebugString("Resuming process...\n");
 	Resume();
 #endif //SUSPEND_WHILE_SEARCHING
-	f.Close();
+	fclose(f);
     if( mode != SM_REFRESH ) 
     {
 	    if( matchCount )
 	    {
-		    DeleteFile( tempFilename2 );
-		    MoveFile( tempFilename, tempFilename2 );
+		    DeleteFileA( tempFilename2.c_str() );
+		    MoveFileA( tempFilename, tempFilename2.c_str() );
 		    if( matchCount != m_CurrentMatchCount ) {
 			    //add this stage's result to our results list
 			    m_CurrentMatchCount = matchCount;
